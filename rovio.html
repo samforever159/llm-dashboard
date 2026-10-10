@@ -1,0 +1,43 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rovio Personalization Lab</title><link rel="stylesheet" href="style.css"></head>
+<body style="--acc:#e0472f;--acc2:#b83522;--glow:#3a1a16">
+<header><div class="brand">Case <span>#457</span> · Rovio</div><nav><a href="index.html">Shopify</a><a class="on" href="rovio.html">Rovio</a></nav></header>
+<main>
+<div class="hero"><h1>Rovio Personalization Lab</h1><p>Train a tiny reinforcement-learning model (a contextual bandit) that learns which game variant each type of player likes best.</p></div>
+<div class="kpis"><div class="kpi"><b>Beacon</b><span>Rovio games platform</span></div><div class="kpi"><b>RL</b><span>contextual bandits + deep RL</span></div><div class="kpi"><b id="kn">0</b><span>players trained so far</span></div><div class="kpi"><b id="ke">10%</b><span>exploration rate (epsilon)</span></div></div>
+<div class="grid">
+<div class="panel"><h2>1. Player and decision</h2><p class="sub">Pick a player type, then ask the model which variant to show.</p>
+<label>Player skill (context)</label><select id="skill"><option value="0">Casual</option><option value="1">Core</option><option value="2">Expert</option></select>
+<div class="btns"><button onclick="randPlayer()">Random player</button><button class="p" onclick="ask()">Ask model</button></div>
+<div class="out" id="dec" style="margin-top:12px"><div class="card">No decision yet. Press <b>Ask model</b>.</div></div>
+<div class="btns" id="fb" style="display:none"><button class="p" onclick="feed(1)">👍 Player engaged</button><button onclick="feed(0)">👎 Player quit</button></div></div>
+<div class="panel"><h2>2. What the model has learned</h2><p class="sub">Estimated engagement rate for each variant and skill.</p><div id="qt"></div>
+<div class="btns"><button class="p" onclick="auto()">Auto-train 200 players</button><button onclick="setEps(0.3)">Explore more (30%)</button><button onclick="setEps(0.05)">Explore less (5%)</button><button onclick="reset()">Reset model</button></div></div>
+<div class="panel full"><h2>3. Personalized rules vs one global A/B winner</h2><p class="sub">Press the button after some training. 1000 new players are simulated for each approach.</p>
+<div class="btns" style="margin:0 0 12px"><button class="p" onclick="cmp()">Compare with A/B test</button></div><div id="cmp" class="out"></div></div>
+<div class="panel full"><h2>Event log</h2><pre id="log">Model is untrained. All estimates start at 50%.</pre></div>
+</div>
+<p class="note">Demo only: the player behaviour is simulated with hidden probabilities. Rovio's real system learns from real engagement data through Beacon and an MLOps pipeline.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const SK=['Casual','Core','Expert'],VA=['Easy levels + free boosters','Bonus offer pack','Hard bonus challenge'];
+const TRUE=[[.70,.45,.20],[.50,.60,.45],[.30,.40,.75]];
+let Q,N,eps=.1,trained=0,cur=null;
+function reset(){Q=SK.map(()=>[.5,.5,.5]);N=SK.map(()=>[0,0,0]);trained=0;cur=null;$('fb').style.display='none';$('dec').innerHTML='<div class="card">Model reset. Press <b>Ask model</b>.</div>';$('cmp').innerHTML='';$('log').textContent='Model is untrained. All estimates start at 50%.';draw()}
+function pick(s,explore=true){if(explore&&Math.random()<eps){return{v:Math.floor(Math.random()*3),mode:'explore'}}let b=0;for(let v=1;v<3;v++)if(Q[s][v]>Q[s][b])b=v;return{v:b,mode:'exploit'}}
+function upd(s,v,r){N[s][v]++;Q[s][v]+=(r-Q[s][v])/N[s][v]}
+function log(t){$('log').textContent=t+'\n'+$('log').textContent.split('\n').slice(0,7).join('\n')}
+function draw(){$('kn').textContent=trained;$('ke').textContent=Math.round(eps*100)+'%';
+$('qt').innerHTML='<table><tr><th></th>'+VA.map((v,i)=>'<th>V'+(i+1)+'</th>').join('')+'</tr>'+SK.map((s,i)=>'<tr><td>'+s+'</td>'+Q[i].map((q,j)=>'<td>'+Math.round(q*100)+'%<div class="bar"><i style="width:'+q*100+'%"></i></div><small style="color:#7f8a85">n='+N[i][j]+'</small></td>').join('')+'</tr>').join('')+'</table><p class="sub" style="margin-top:8px">V1 = '+VA[0]+'; V2 = '+VA[1]+'; V3 = '+VA[2]+'</p>'}
+function randPlayer(){$('skill').value=Math.floor(Math.random()*3);log('New random player: '+SK[$('skill').value]);ask()}
+function ask(){const s=+$('skill').value;const p=pick(s);cur={s,v:p.v};$('dec').innerHTML='<div class="card"><b>'+SK[s]+' player</b> gets <b>V'+(p.v+1)+': '+VA[p.v]+'</b><br><span class="chip">'+p.mode+'</span></div>';$('fb').style.display='flex';log('Asked model for a '+SK[s]+' player -> V'+(p.v+1)+' ('+p.mode+')')}
+function feed(r){if(!cur)return;upd(cur.s,cur.v,r);trained++;log('Feedback: '+(r?'engaged':'quit')+' -> updated '+SK[cur.s]+' / V'+(cur.v+1));cur=null;$('fb').style.display='none';$('dec').innerHTML='<div class="card">Model updated. Ask again to see it improve.</div>';draw()}
+function auto(){for(let i=0;i<200;i++){const s=Math.floor(Math.random()*3);const p=pick(s);upd(s,p.v,Math.random()<TRUE[s][p.v]?1:0);trained++}log('Auto-trained 200 simulated players');draw()}
+function setEps(e){eps=e;log('Exploration rate set to '+Math.round(e*100)+'%');draw()}
+function cmp(){if(trained<30){alert('Train the model first (try Auto-train 200 players).');return}
+const avg=[0,1,2].map(v=>(TRUE[0][v]+TRUE[1][v]+TRUE[2][v])/3);const g=avg.indexOf(Math.max(...avg));let a=0,b=0;const T=1000;for(let i=0;i<T;i++){const s=Math.floor(Math.random()*3);if(Math.random()<TRUE[s][g])a++;if(Math.random()<TRUE[s][pick(s,false).v])b++}
+const pa=Math.round(a/T*100),pb=Math.round(b/T*100);
+$('cmp').innerHTML='<div class="card"><b>A/B test winner:</b> V'+(g+1)+' shown to everyone, '+pa+'% engaged<div class="bar"><i style="width:'+pa+'%;background:#9aa6a0"></i></div></div><div class="card"><b>Personalized rules:</b> best variant per skill, '+pb+'% engaged<div class="bar"><i style="width:'+pb+'%"></i></div></div><div class="card">'+(pb>pa?'Personalization gained +'+(pb-pa)+' points of engagement.':'Train more so the model can find the best variants.')+'</div>';log('Compared A/B ('+pa+'%) vs personalized ('+pb+'%)')}
+reset();
+</script></body></html>

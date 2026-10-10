@@ -1,0 +1,36 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shopify Global Catalogue Lab</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><div class="brand">Case <span>#79</span> · Shopify</div><nav><a class="on" href="index.html">Shopify</a><a href="rovio.html">Rovio</a></nav></header>
+<main>
+<div class="hero"><h1>Shopify Global Catalogue Lab</h1><p>Try a small, rule-based version of what Shopify's multimodal LLM does: turn a messy product listing into clean, structured catalogue data.</p></div>
+<div class="kpis"><div class="kpi"><b>10M+</b><span>product updates per day</span></div><div class="kpi"><b>40M</b><span>LLM calls per day</span></div><div class="kpi"><b>2s → 500ms</b><span>median latency</span></div><div class="kpi"><b>-40%</b><span>GPU usage</span></div></div>
+<div class="grid">
+<div class="panel"><h2>1. Merchant listing</h2><p class="sub">Type a messy listing or load a sample.</p>
+<label>Product title</label><input type="text" id="title" placeholder="e.g. NEW!! Nike Running Shoes Black Size 9 SALE">
+<label>Description</label><textarea id="desc" placeholder="Describe the product..."></textarea>
+<label><input type="checkbox" id="img"> Listing has a product image</label>
+<div class="btns"><button class="p" onclick="sample()">Load sample</button><button onclick="classify()">Classify</button><button onclick="attrs()">Extract attributes</button><button onclick="stdTitle()">Standardise title</button><button onclick="quality()">Quality score</button><button onclick="dups()">Find duplicates</button><button onclick="clr()">Clear</button></div></div>
+<div class="panel"><h2>2. Catalogue output</h2><p class="sub">Each button adds a result card below.</p><div class="out" id="out"><div class="card" data-e="1">Nothing yet. Press <b>Load sample</b>, then try the other buttons.</div></div>
+<pre id="json">{}</pre><div class="btns"><button class="p" onclick="copyJ()" id="cp">Copy JSON</button></div></div>
+</div>
+<p class="note">Demo only: it uses simple keyword rules to imitate the idea. Shopify's real system uses fine-tuned vision LLMs (Layer 2: product understanding, Layer 3: product matching).</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);let R={};
+const TAX=[[/shoe|sneaker|boot|sandal/,'Apparel & Accessories > Shoes'],[/t-?shirt|shirt|hoodie|jacket|jeans|dress/,'Apparel & Accessories > Clothing'],[/phone|iphone|laptop|headphone|earbud|camera|tablet/,'Electronics'],[/mug|cup|bottle|lamp|sofa|pillow|candle/,'Home & Garden'],[/lipstick|cream|serum|shampoo|perfume/,'Health & Beauty'],[/ball|yoga|dumbbell|bike|racket/,'Sporting Goods']];
+const COL=['black','white','red','blue','green','silver','gold','grey','gray','pink','yellow','brown'],MAT=['cotton','leather','steel','wool','plastic','glass','wood','silk','rubber'],BR=['nike','adidas','apple','samsung','sony','zara','puma','dell','hp'];
+const NOISE=/\b(new|sale|hot|free shipping|best|offer|limited|!+)\b|!+/gi;
+const CATALOG=[['Nike Running Shoes','Merchant A'],['Adidas Ultraboost Shoes','Merchant B'],['Running Shoes by Nike Black','Merchant C'],['Apple iPhone 16 Pro','Merchant D'],['Ceramic Coffee Mug','Merchant E']];
+const txt=()=>($('title').value+' '+$('desc').value).toLowerCase();
+function add(h){const o=$('out');if(o.firstChild&&o.firstChild.dataset&&o.firstChild.dataset.e)o.innerHTML='';const d=document.createElement('div');d.className='card';d.innerHTML=h;o.prepend(d);$('json').textContent=JSON.stringify(R,null,2)}
+function need(){if(!$('title').value.trim()){alert('Please enter a title or press Load sample first.');return false}return true}
+function sample(){$('title').value='NEW!! Nike Running Shoes Black Size 9 SALE';$('desc').value='Lightweight leather running shoes for men. Breathable, comfortable and durable for daily training. Free shipping. Ideal for road and trail.';$('img').checked=true;$('out').innerHTML='';R={};$('json').textContent='{}'}
+function classify(){if(!need())return;const t=txt();const m=TAX.find(x=>x[0].test(t));R.category=m?m[1]:'Uncategorised (needs review)';add('<b>Category:</b> '+R.category)}
+function attrs(){if(!need())return;const t=txt();const a={};const c=COL.filter(x=>t.includes(x));if(c.length)a.color=c;const s=t.match(/size\s?(\d+|xs|s|m|l|xl|xxl)\b|\b(\d+\s?(gb|tb|ml|oz|cm))\b/g);if(s)a.size_or_spec=s;const m=MAT.filter(x=>t.includes(x));if(m.length)a.material=m;const b=BR.find(x=>t.includes(x));if(b)a.brand=b[0].toUpperCase()+b.slice(1);R.attributes=a;add('<b>Attributes:</b> '+(Object.keys(a).length?Object.entries(a).map(([k,v])=>'<span class="chip">'+k+': '+[].concat(v).join(', ')+'</span>').join(''):'none found'))}
+function stdTitle(){if(!need())return;let t=$('title').value.replace(NOISE,' ');COL.forEach(c=>t=t.replace(new RegExp('\\b'+c+'\\b','gi'),' '));t=t.replace(/\bsize\s?\w+\b/gi,' ').replace(/\s+/g,' ').trim();t=t.replace(/\w\S*/g,w=>w[0].toUpperCase()+w.slice(1).toLowerCase());R.standard_title=t;add('<b>Standard title:</b> '+t)}
+function quality(){if(!need())return;const w=$('desc').value.trim().split(/\s+/).filter(Boolean).length;if(!R.category)classify();if(!R.attributes)attrs();let s=0;const n=[];(function(){if($('title').value.trim().split(/\s+/).length>=3)s+=20;else n.push('longer title');if(w>=20)s+=25;else n.push('description of 20+ words');if($('img').checked)s+=20;else n.push('product image');if(!R.category.startsWith('Uncat'))s+=15;else n.push('clear category');if(R.attributes.brand)s+=10;else n.push('brand');if(Object.keys(R.attributes).length>=2)s+=10;else n.push('2+ attributes')})();R.quality_score=s;add('<b>Quality score: '+s+'/100</b><div class="bar"><i style="width:'+s+'%"></i></div>'+(n.length?'Improve: '+n.join(', '):'Excellent listing!'))}
+function dups(){if(!need())return;const tok=x=>new Set(x.toLowerCase().replace(NOISE,' ').split(/\W+/).filter(w=>w.length>1&&!COL.includes(w)&&!/^(size|by)$/.test(w)));const A=tok($('title').value);const res=CATALOG.map(([t,m])=>{const B=tok(t);const i=[...A].filter(x=>B.has(x)).length;const u=new Set([...A,...B]).size;return{t,m,s:Math.round(100*i/u)}}).sort((a,b)=>b.s-a.s);R.matches=res.slice(0,3).map(r=>({listing:r.t,merchant:r.m,similarity:r.s+'%'}));add('<b>Duplicate check</b><br>'+res.slice(0,3).map(r=>r.m+': '+r.t+' <span class="chip">'+r.s+'%'+(r.s>=50?' same product':'')+'</span>').join('<br>'))}
+function copyJ(){navigator.clipboard.writeText($('json').textContent).then(()=>{$('cp').textContent='Copied!';setTimeout(()=>$('cp').textContent='Copy JSON',1200)}).catch(()=>alert('Select the JSON and copy it manually.'))}
+function clr(){$('title').value='';$('desc').value='';$('img').checked=false;R={};$('json').textContent='{}';$('out').innerHTML='<div class="card" data-e="1">Cleared. Press <b>Load sample</b> to start again.</div>'}
+</script></body></html>
